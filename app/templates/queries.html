@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Query checks · Invoice Tracker{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Query checks</h1>
+    <p class="muted">Today is {{ today }}. These checks only read the practice database. A match means the database query and the invoice screens returned the same value. {{ passed }} of {{ rows|length }} match.</p>
+  </div>
+</div>
+<div class="query-list" data-testid="query-checks">
+  {% for row in rows %}
+  <article class="panel query-card" data-testid="query-row" data-check="{{ row.id }}" data-result="{% if row.match %}match{% else %}differ{% endif %}">
+    <header>
+      <h2>{{ row.id }} · {{ row.title }}</h2>
+      {% if row.match %}<span class="badge status-paid">Match</span>{% else %}<span class="badge status-overdue">Differ</span>{% endif %}
+    </header>
+    <dl>
+      <div><dt>SQL equivalent</dt><dd><code>{{ row.sql }}</code></dd></div>
+      <div><dt>MongoDB query that ran</dt><dd><code>{{ row.mongo }}</code></dd></div>
+      <div><dt>Database</dt><dd>{{ row.database }}</dd></div>
+      <div><dt>Screens</dt><dd>{{ row.screens }}</dd></div>
+    </dl>
+  </article>
+  {% endfor %}
+</div>
+<p class="hint">Line items stay inside the invoice, so Q-07 is a calculation, not a join. Customers are a separate collection, so Q-05 and Q-06 join invoices to customers. These checks do not insert, update, or delete.</p>
+{% endblock %}

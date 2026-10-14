@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ invoice.invoiceNumber }} · Invoice Tracker{% endblock %}
+{% block content %}
+<p class="back"><a href="/invoices">← All invoices</a></p>
+<div class="page-head">
+  <div>
+    <p class="eyebrow">{{ invoice.invoiceNumber }}</p>
+    <h1 data-testid="customer-name">{{ invoice.customerName }}</h1>
+    <p class="muted"><a href="mailto:{{ invoice.customerEmail }}">{{ invoice.customerEmail }}</a>{% if invoice.city %} · {{ invoice.city }}{% endif %}</p>
+  </div>
+  <span class="badge status-{{ invoice.status|lower|replace(' ', '-') }}" data-testid="invoice-status">{{ invoice.status }}</span>
+</div>
+<p class="banner {{ 'bad' if invoice.status == 'Overdue' else 'ok' if invoice.status == 'Paid' else 'warn' if invoice.status == 'Partially Paid' else 'info' }}" data-testid="status-reason">{{ invoice.reason }}</p>
+<section class="panel">
+  <dl class="facts">
+    <div><dt>Issue date</dt><dd data-testid="issue-date">{{ invoice.issueDate }}</dd></div>
+    <div><dt>Due date</dt><dd data-testid="due-date">{{ invoice.dueDate }}</dd></div>
+    <div><dt>Currency</dt><dd>AED</dd></div>
+    <div><dt>Updated</dt><dd><time datetime="{{ invoice.updatedAt }}">{{ invoice.updatedAt[:16]|replace("T", " ") }} UTC</time></dd></div>
+  </dl>
+</section>
+<section class="panel">
+  <h2>Lines</h2>
+  <table class="sheet" data-testid="line-table">
+    <thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+      {% for line in invoice.lineItems %}
+      <tr data-testid="saved-line">
+        <td data-label="Description">{{ line.description }}</td>
+        <td class="num" data-label="Qty">{{ line.quantity }}</td>
+        <td class="num" data-label="Unit price">{{ line.unitPriceText }}</td>
+        <td class="num" data-label="Amount">{{ line.amountText }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <dl class="totals">
+    <div><dt>Total</dt><dd data-testid="total">{{ invoice.totalText }} AED</dd></div>
+    <div><dt>Amount paid</dt><dd data-testid="amount-paid">{{ invoice.amountPaidText }} AED</dd></div>
+    <div><dt>Balance</dt><dd data-testid="balance">{{ invoice.balanceText }} AED</dd></div>
+  </dl>
+  {% if invoice.notes %}<p class="notes" data-testid="notes">{{ invoice.notes }}</p>{% else %}<p class="muted">No notes.</p>{% endif %}
+</section>
+<div class="actions">
+  <a class="button" href="/invoices/{{ invoice.invoiceNumber }}/edit" data-testid="edit">Edit</a>
+  <form method="post" action="/invoices/{{ invoice.invoiceNumber }}/delete" data-confirm="Delete {{ invoice.invoiceNumber }} for {{ invoice.customerName }}? This cannot be undone.">
+    <button type="submit" class="danger" data-testid="delete">Delete</button>
+  </form>
+</div>
+{% endblock %}

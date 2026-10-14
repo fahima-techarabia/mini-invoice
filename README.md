@@ -1,0 +1,68 @@
+# Invoice Tracker
+
+A small practice app for database, API and UI testing. Fictional customers only. Not connected to Fortender.
+
+The folder is still named `mini-tender-bid`. The tender app that used to live here has been removed.
+
+## Stack
+
+Python, FastAPI, PyMongo, and MongoDB Atlas. The pages and the JSON API use the same rules in `app/services.py`.
+
+## Setup
+
+1. Copy `.env.example` to `.env` and set `MONGODB_URI`. Never commit `.env`.
+2. `MONGODB_DB` must be a practice database whose name ends with `_practice` or `_test`. The Atlas user `mtb_app_dev` can write to `mini_tender_practice`, so that is the database this project uses.
+3. Install and check the connection:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements.txt
+.\.venv\Scripts\python scripts\check_connection.py
+```
+
+4. Load fictional invoices. This **drops** `companies`, `users`, `tenders`, `bids`, `invoices`, `counters` and `customers` in that database, then loads 8 customers and 16 invoices:
+
+```powershell
+.\.venv\Scripts\python scripts\seed.py
+```
+
+## Run
+
+```powershell
+.\.venv\Scripts\python -m uvicorn app.main:app --reload
+```
+
+- Pages: http://127.0.0.1:8000
+- Query checks: http://127.0.0.1:8000/queries
+- API try-it page: http://127.0.0.1:8000/docs
+
+There is no login. Anyone who can open the site can change the practice invoices.
+
+## Rules
+
+Status is calculated, not typed:
+
+| Status | When |
+|---|---|
+| Paid | Amount paid equals the total |
+| Overdue | Not fully paid, and the due date is before today |
+| Partially Paid | Some money has been received, and the due date is today or later |
+| Unpaid | Nothing has been received, and the due date is today or later |
+
+Today follows your computer's timezone. The practice data is built for UTC+4.
+
+Details are in `docs/REQUIREMENTS.md`, `docs/DATABASE_SCHEMA.md` and `docs/TEST_DATA.md`.
+
+## Browser checks
+
+Fifteen critical checks live in `tests/test_browser.py`. They use Playwright through pytest. The app must already be running at http://127.0.0.1:8000. These checks do not create, edit, or delete an invoice.
+
+```powershell
+.\.venv\Scripts\python -m pip install -r requirements.txt
+.\.venv\Scripts\python -m playwright install chromium
+.\.venv\Scripts\python -m pytest tests/test_browser.py --browser chromium
+```
+
+The report is written to `playwright-report/index.html`. Open that file in a browser. It is not committed.
+
+PowerShell does not recognize a bare `playwright` command. Use the `python -m playwright` line above. That downloads Chromium into `%LOCALAPPDATA%\ms-playwright`.

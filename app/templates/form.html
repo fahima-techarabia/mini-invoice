@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == "new" %}New invoice{% else %}Edit {{ invoice.invoiceNumber }}{% endif %} · Invoice Tracker{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{% if mode == "new" %}New invoice{% else %}Edit {{ invoice.invoiceNumber }}{% endif %}</h1>
+    <p class="muted">
+      {% if mode == "new" %}The invoice number is assigned when you save.
+      {% else %}The invoice number stays the same.{% endif %}
+      Amount paid is the total received so far, not an extra payment to add on.
+    </p>
+  </div>
+</div>
+<form class="panel form" method="post" action="{% if mode == 'new' %}/invoices/new{% else %}/invoices/{{ invoice.invoiceNumber }}/edit{% endif %}" data-once>
+  <fieldset>
+    <legend>Customer</legend>
+    {% if customers %}
+    <label for="customer-id">Saved customer</label>
+    <select id="customer-id" name="customer_id" data-customer-picker data-testid="customer-picker">
+      <option value="">Type a customer below</option>
+      {% for item in customers %}
+      <option value="{{ item.id }}" data-name="{{ item.name }}" data-email="{{ item.email }}" data-city="{{ item.city }}" {% if values.customerId == item.id %}selected{% endif %}>{{ item.name }} · {{ item.city }}</option>
+      {% endfor %}
+    </select>
+    <p id="customer-city" class="hint" data-testid="customer-city">City comes from the saved customer. A typed customer is not linked to a city.</p>
+    {% endif %}
+    <div class="split">
+      <div>
+        <label for="customer-name">Customer name <span class="req">Required</span></label>
+        <input id="customer-name" name="customer_name" maxlength="100" required data-testid="customer-name" value="{{ values.customerName }}">
+      </div>
+      <div>
+        <label for="customer-email">Customer email <span class="req">Required</span></label>
+        <input id="customer-email" name="customer_email" type="email" maxlength="200" required data-testid="customer-email" value="{{ values.customerEmail }}">
+      </div>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Dates</legend>
+    <div class="split">
+      <div>
+        <label for="issue-date">Issue date <span class="req">Required</span></label>
+        <input id="issue-date" name="issue_date" type="date" required data-testid="issue-date" value="{{ values.issueDate }}">
+      </div>
+      <div>
+        <label for="due-date">Due date <span class="req">Required</span></label>
+        <input id="due-date" name="due_date" type="date" required data-testid="due-date" value="{{ values.dueDate }}">
+      </div>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Line items</legend>
+  <div id="line-rows" data-testid="lines">
+    {% for line in values.lineItems %}
+    <div class="line" data-testid="line">
+      <label>Description <input name="description" maxlength="200" required data-testid="description" value="{{ line.description }}"></label>
+      <label>Qty <input name="quantity" inputmode="numeric" required data-testid="quantity" value="{{ line.quantity }}"></label>
+      <label>Unit price (AED) <input name="unit_price" inputmode="decimal" required data-testid="unit-price" value="{{ line.unitPrice }}"></label>
+      <p class="line-total">Line <strong data-testid="line-total">—</strong></p>
+      <button type="button" class="ghost remove-line" data-testid="remove-line">Remove</button>
+    </div>
+    {% endfor %}
+  </div>
+  <p><button type="button" id="add-line" class="ghost" data-testid="add-line">Add line</button></p>
+  <template id="line-template">
+    <div class="line" data-testid="line">
+      <label>Description <input name="description" maxlength="200" required data-testid="description"></label>
+      <label>Qty <input name="quantity" inputmode="numeric" required data-testid="quantity" value="1"></label>
+      <label>Unit price (AED) <input name="unit_price" inputmode="decimal" required data-testid="unit-price"></label>
+      <p class="line-total">Line <strong data-testid="line-total">—</strong></p>
+      <button type="button" class="ghost remove-line" data-testid="remove-line">Remove</button>
+    </div>
+  </template>
+  </fieldset>
+  <fieldset>
+    <legend>Payment and notes</legend>
+    <div class="split">
+      <div>
+        <label for="amount-paid">Amount paid (AED)</label>
+        <input id="amount-paid" name="amount_paid" inputmode="decimal" data-testid="amount-paid" value="{{ values.amountPaid }}" placeholder="0.00">
+        <p class="hint">This replaces the amount received so far. It is not added to the saved payment. Leave blank for 0. It cannot be more than the total. Use a dot, not a comma.</p>
+      </div>
+      <div>
+        <label for="notes">Notes <span class="muted">Optional</span></label>
+        <textarea id="notes" name="notes" maxlength="500" rows="3" data-testid="notes">{{ values.notes }}</textarea>
+        <p class="hint"><span id="notes-count">0</span>/500</p>
+      </div>
+    </div>
+  </fieldset>
+  <dl class="totals" data-testid="live-totals">
+    <div><dt>Total</dt><dd><span id="invoice-total">0.00</span> AED</dd></div>
+    <div><dt>Balance</dt><dd><span id="balance">0.00</span> AED</dd></div>
+  </dl>
+  <p id="balance-warning" class="hint warn-text" hidden>Amount paid is above the total. Save will be refused until it is lower or equal.</p>
+  <div class="actions">
+    <button type="submit" class="primary" data-testid="save">{% if mode == "new" %}Save invoice{% else %}Save changes{% endif %}</button>
+    <a class="ghost" href="{% if mode == 'new' %}/invoices{% else %}/invoices/{{ invoice.invoiceNumber }}{% endif %}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

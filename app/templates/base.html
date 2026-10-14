@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Invoice Tracker{% endblock %}</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <a class="skip" href="#content">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="/invoices">Invoice Tracker <small>Practice</small></a>
+    <nav aria-label="Main">
+      <a href="/invoices" {% if page == "list" %}aria-current="page"{% endif %}>Invoices</a>
+      <a href="/queries" {% if page == "queries" %}aria-current="page"{% endif %} data-testid="query-checks-link">Query checks</a>
+      <a href="/invoices/new" {% if page == "new" %}aria-current="page"{% endif %} data-testid="new-invoice">New invoice</a>
+    </nav>
+  </header>
+  <main id="content">
+    {% if notice %}<p class="banner ok" data-testid="notice" role="status">{{ notice }}</p>{% endif %}
+    {% if errors %}
+    <ul class="banner bad" data-testid="error" role="alert" tabindex="-1">
+      {% for item in errors %}<li>{{ item }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer>Practice data only. Not connected to Fortender. Status uses your computer's date, and an invoice becomes overdue the day after its due date.</footer>
+  <script src="/static/app.js"></script>
+</body>
+</html>

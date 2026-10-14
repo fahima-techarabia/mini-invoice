@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Invoices · Invoice Tracker{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Invoices</h1>
+    <p class="muted">Today is {{ today }}. Counts below are every invoice in the practice database. The table follows the filters.</p>
+  </div>
+  <a class="button" href="/invoices/new">New invoice</a>
+</div>
+<section class="stats" aria-label="All invoices">
+  <a class="stat" href="/invoices"><span>All</span><strong data-testid="book-total">{{ book.total }}</strong></a>
+  {% for name in statuses %}
+  <a class="stat status-{{ name|lower|replace(' ', '-') }}" href="/invoices?status={{ name|urlencode }}"><span>{{ name }}</span><strong>{{ book.counts[name] }}</strong></a>
+  {% endfor %}
+  <div class="stat outstanding"><span>Outstanding</span><strong>{{ book.outstanding }} <small>AED</small></strong></div>
+</section>
+<form class="panel filter-bar" method="get" action="/invoices" role="search">
+  <div class="filter-grid">
+    <label for="q">Search
+      <input id="q" name="q" value="{{ q }}" placeholder="Invoice number or customer" data-testid="search">
+    </label>
+    <label for="filter-customer">Customer
+      <select id="filter-customer" name="customer" data-testid="filter-customer">
+        <option value="">All customers</option>
+        {% for item in customers %}
+        <option value="{{ item.id }}" {% if customer == item.id %}selected{% endif %}>{{ item.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label for="filter-city">City
+      <select id="filter-city" name="city" data-testid="filter-city">
+        <option value="">All cities</option>
+        {% for name in cities %}
+        <option value="{{ name }}" {% if city == name %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label for="filter-status">Status
+      <select id="filter-status" name="status" data-testid="filter-status">
+        <option value="">All statuses</option>
+        {% for name in statuses %}
+        <option value="{{ name }}" {% if selected == name %}selected{% endif %}>{{ name }} ({{ counts[name] }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label for="filter-due">Due on or before
+      <input id="filter-due" type="date" name="due" value="{{ due }}" data-testid="filter-due">
+    </label>
+  </div>
+  <div class="actions">
+    <button type="submit" class="primary" data-testid="search-button">Apply</button>
+    <a class="ghost" href="/invoices" data-testid="clear-search">Clear</a>
+  </div>
+  <p class="muted result-line">
+    {% if selected %}Showing {{ invoices|length }} {{ selected|lower }} invoice{% if invoices|length != 1 %}s{% endif %} out of {{ total }} that match the other filters.
+    {% elif filtering %}Showing {{ invoices|length }} matching invoice{% if invoices|length != 1 %}s{% endif %}.
+    {% else %}Showing all {{ total }} invoice{% if total != 1 %}s{% endif %}.{% endif %}
+  </p>
+</form>
+{% if invoices %}
+<div class="table-wrap">
+<table class="sheet" data-testid="invoice-table">
+  <thead>
+    <tr>
+      <th>Number</th><th>Customer</th><th>City</th><th>Issued</th><th>Due</th>
+      <th class="num">Total</th><th class="num">Paid</th><th class="num">Balance</th><th>Status</th><th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for invoice in invoices %}
+    <tr data-testid="invoice-row" data-number="{{ invoice.invoiceNumber }}" data-total="{{ invoice.totalText }}" data-paid="{{ invoice.amountPaidText }}" data-balance="{{ invoice.balanceText }}">
+      <td data-label="Number"><a href="/invoices/{{ invoice.invoiceNumber }}" data-testid="open-invoice">{{ invoice.invoiceNumber }}</a></td>
+      <td data-label="Customer">{{ invoice.customerName }}</td>
+      <td data-label="City">{{ invoice.city or "—" }}</td>
+      <td data-label="Issued">{{ invoice.issueDate }}</td>
+      <td data-label="Due">{{ invoice.dueDate }}</td>
+      <td class="num" data-label="Total">{{ invoice.totalText }}</td>
+      <td class="num" data-label="Paid">{{ invoice.amountPaidText }}</td>
+      <td class="num" data-label="Balance">{{ invoice.balanceText }}</td>
+      <td data-label="Status"><span class="badge status-{{ invoice.status|lower|replace(' ', '-') }}" data-testid="invoice-status">{{ invoice.status }}</span></td>
+      <td class="row-actions" data-label="Actions">
+        <a href="/invoices/{{ invoice.invoiceNumber }}/edit">Edit</a>
+        <form method="post" action="/invoices/{{ invoice.invoiceNumber }}/delete" data-confirm="Delete {{ invoice.invoiceNumber }} for {{ invoice.customerName }}? This cannot be undone.">
+          <button type="submit" class="danger" data-testid="delete">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty" data-testid="empty">
+  {% if filtering %}No invoices match these filters. Clear them to see every invoice.
+  {% else %}No invoices yet. Create one to start.{% endif %}
+</p>
+{% endif %}
+{% endblock %}
