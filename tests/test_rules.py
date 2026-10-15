@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.services import AppError, invoice_status, validate
+from app.services import DEFAULT_OFFSET_MINUTES, AppError, invoice_status, parse_offset, validate
 
 TODAY = "2026-10-14"
 
@@ -52,6 +52,24 @@ def test_amount_paid_replaces_rather_than_adds():
     assert second["amountPaid"] == 10.0
 
 
+def test_largest_quantity_and_price_are_allowed():
+    saved = validate(_invoice(amountPaid="0", lineItems=[
+        {"description": "Bulk", "quantity": "9999", "unitPrice": "1000000"},
+    ]))
+    assert saved["total"] == 9_999_000_000.0
+
+
+@pytest.mark.parametrize("cookie, offset", [
+    ("-240", -240),
+    ("840", 840),
+    ("841", DEFAULT_OFFSET_MINUTES),
+    ("abc", DEFAULT_OFFSET_MINUTES),
+    (None, DEFAULT_OFFSET_MINUTES),
+])
+def test_timezone_cookie_falls_back_to_dubai(cookie, offset):
+    assert parse_offset(cookie) == offset
+
+
 def test_paid_equal_to_the_total_is_allowed():
     saved = validate(_invoice(amountPaid="90"))
     assert saved["amountPaid"] == 90.0
@@ -59,16 +77,30 @@ def test_paid_equal_to_the_total_is_allowed():
 
 
 @pytest.mark.parametrize("changes, message", [
-    ({"customerName": "  "}, "Customer name"),
-    ({"customerEmail": "not-an-email"}, "email"),
-    ({"dueDate": "2026-09-01"}, "Due date must be on or after"),
-    ({"amountPaid": "-1"}, "cannot be negative"),
-    ({"amountPaid": "90.01"}, "cannot be greater than"),
-    ({"amountPaid": "10.005"}, "at most 2 decimal places"),
-    ({"lineItems": [{"description": "Labels", "quantity": "0", "unitPrice": "10"}]}, "quantity must be from 1"),
-    ({"lineItems": [{"description": "Labels", "quantity": "1", "unitPrice": "-5"}]}, "greater than 0"),
-    ({"notes": "x" * 501}, "at most 500"),
-    ({"lineItems": []}, "1 to 10 lines"),
+    pytest.param({"customerName": "  "}, "Customer name", id="a blank customer name"),
+    pytest.param({"customerEmail": "not-an-email"}, "email", id="a badly formed email"),
+    pytest.param({"dueDate": "2026-09-01"}, "Due date must be on or after", id="a due date before the issue date"),
+    pytest.param({"amountPaid": "-1"}, "cannot be negative", id="a negative amount paid"),
+    pytest.param({"amountPaid": "90.01"}, "cannot be greater than", id="amount paid above the total"),
+    pytest.param({"amountPaid": "10.005"}, "at most 2 decimal places", id="amount paid with 3 decimals"),
+    pytest.param({"lineItems": [{"description": "Labels", "quantity": "0", "unitPrice": "10"}]},
+                 "quantity must be from 1", id="quantity 0"),
+    pytest.param({"lineItems": [{"description": "Labels", "quantity": "1", "unitPrice": "-5"}]},
+                 "greater than 0", id="a negative price"),
+    pytest.param({"notes": "x" * 501}, "at most 500", id="notes over 500 characters"),
+    pytest.param({"lineItems": []}, "1 to 10 lines", id="no lines"),
+    pytest.param({"lineItems": [{"description": "Labels", "quantity": "1", "unitPrice": "1"}] * 11},
+                 "1 to 10 lines", id="11 lines"),
+    pytest.param({"lineItems": [{"description": "Labels", "quantity": "10000", "unitPrice": "1"}]},
+                 "quantity must be from 1 to 9999", id="quantity 10000"),
+    pytest.param({"lineItems": [{"description": "Labels", "quantity": "1.5", "unitPrice": "1"}]},
+                 "quantity must be a whole number", id="quantity 1.5"),
+    pytest.param({"lineItems": [{"description": "Labels", "quantity": "1", "unitPrice": "1000000.01"}]},
+                 "at most 1,000,000", id="a price over 1,000,000"),
+    pytest.param({"lineItems": [{"description": "Labels", "quantity": "1", "unitPrice": "10.005"}]},
+                 "at most 2 decimal places", id="a price with 3 decimals"),
+    pytest.param({"dueDate": "2026-02-30"}, "Due date must be a real date", id="the date 30 February"),
+    pytest.param({"currency": "USD"}, "Currency must be AED", id="a currency other than AED"),
 ])
 def test_server_rejects_invalid_invoices(changes, message):
     with pytest.raises(AppError) as caught:

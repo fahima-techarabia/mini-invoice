@@ -63,6 +63,18 @@ Fifteen critical checks live in `tests/test_browser.py`. They use Playwright thr
 .\.venv\Scripts\python -m pytest tests/test_browser.py --browser chromium
 ```
 
-The report is written to `playwright-report/index.html`. Open that file in a browser. It is not committed.
+Every test run writes a report to `test-report/index.html`, covering whichever tests ran. Open that file in a browser. It is not committed. On GitHub, the same summary appears on the run page and the report is attached to the run as **test-report**.
 
 PowerShell does not recognize a bare `playwright` command. Use the `python -m playwright` line above. That downloads Chromium into `%LOCALAPPDATA%\ms-playwright`.
+
+## Test groups
+
+Tests are marked so each group can run on its own:
+
+```powershell
+.\.venv\Scripts\python -m pytest -m "not db and not browser"   # rules, routes, templates; what CI runs
+.\.venv\Scripts\python -m pytest -m browser                     # needs the app running
+.\.venv\Scripts\python -m pytest -m db                          # writes one temporary invoice to the database in .env
+```
+
+Browser checks skip when the app is not running. Database checks skip when `MONGODB_URI` is not set. The `db` group creates, edits and deletes one invoice, which uses up one invoice number.

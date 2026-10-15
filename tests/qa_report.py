@@ -1,10 +1,29 @@
 """A short HTML report in the same shape as the Fortender QA checks panel."""
 
+import os
 from datetime import datetime
 from html import escape
 from pathlib import Path
 
-REPORT = Path(__file__).resolve().parents[1] / "playwright-report" / "index.html"
+REPORT = Path(__file__).resolve().parents[1] / "test-report" / "index.html"
+
+AREAS = {
+    "test_rules": "Business rules",
+    "test_app_loads": "App structure",
+    "test_browser": "Browser",
+    "test_flow": "Database",
+}
+
+LABELS = {
+    "test_status_uses_payment_before_the_due_date": "Status follows payment and due date (8 cases)",
+    "test_total_is_the_sum_of_the_lines_and_blank_paid_is_zero": "Total is the sum of the lines; blank amount paid is 0",
+    "test_amount_paid_replaces_rather_than_adds": "Amount paid replaces the old value, never adds to it",
+    "test_largest_quantity_and_price_are_allowed": "Largest quantity (9,999) and price (1,000,000) are allowed",
+    "test_paid_equal_to_the_total_is_allowed": "Amount paid equal to the total is allowed",
+    "test_unknown_page_is_not_found": "Unknown page answers 404",
+    "test_filters_keep_each_criterion_and_clear_resets_them": "Filters combine and Clear resets them (saved data)",
+    "test_saved_customer_replaces_typed_contact_and_payment_is_not_added": "Create, edit and delete one temporary invoice",
+}
 
 CHECKS = {
     "test_01_invoice_list_loads": ("01  Invoice list loads", "/invoices"),
@@ -25,15 +44,34 @@ CHECKS = {
 }
 
 
-def label_for(nodeid: str) -> tuple[str, str]:
-    for key, value in CHECKS.items():
-        if key in nodeid:
-            return value
-    short = nodeid.split("::")[-1].replace("[chromium]", "")
-    return short, ""
+def describe(item) -> tuple[str, str]:
+    module = item.module.__name__.rsplit(".", 1)[-1]
+    name = getattr(item, "originalname", item.name)
+    callspec = getattr(item, "callspec", None)
+    params = callspec.params if callspec else {}
+    area = AREAS.get(module, "Other")
+    if module == "test_browser":
+        label, page = CHECKS.get(name, (_plain(name), ""))
+        return label, f"Browser · {page}" if page else area
+    if name == "test_route_is_registered":
+        return f"Route answers: {params['method']} {params['path']}", area
+    if name == "test_template_compiles":
+        return f"Page template loads: {params['name']}", area
+    if name == "test_timezone_cookie_falls_back_to_dubai":
+        cookie = "missing" if params["cookie"] is None else f"'{params['cookie']}'"
+        return f"Timezone cookie {cookie} gives offset {params['offset']} minutes", area
+    if name == "test_server_rejects_invalid_invoices":
+        return f"Refuses an invoice with {callspec.id}", area
+    return LABELS.get(name, _plain(name)), area
+
+
+def _plain(name: str) -> str:
+    return name.removeprefix("test_").replace("_", " ").capitalize()
 
 
 def clock(seconds: float) -> str:
+    if seconds < 0.001:
+        return "< 1 ms"
     if seconds < 1:
         return f"{round(seconds * 1000)} ms"
     return f"{seconds:.1f}s"
@@ -46,20 +84,72 @@ def write(rows: list[dict]) -> None:
     total = sum(row["seconds"] for row in rows)
     status = "Passed" if failed == 0 and rows else "Failed"
     when = datetime.now().strftime("%d %b %Y, %H:%M")
+    where = "GitHub Actions" if os.getenv("GITHUB_ACTIONS") else "Local run"
     body = "\n".join(_row(row) for row in rows)
+    groups = _by_area(rows)
     html = PAGE.format(
         status=status,
         pill=status.lower(),
-        when=escape(when),
+        when=escape(f"{when} · {where}"),
+        count=len(rows),
         passed=passed,
         failed=failed,
         skipped=skipped,
         duration=escape(clock(total)),
+        areas="\n".join(_area(name, results) for name, results in groups.items()),
         rows=body,
     )
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(html, encoding="utf-8")
     print(f"Report: {REPORT}")
+    summary = os.getenv("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a", encoding="utf-8") as handle:
+            handle.write(_markdown(rows, status, groups, passed, failed, skipped, clock(total)))
+
+
+def _by_area(rows: list[dict]) -> dict[str, list[str]]:
+    groups: dict[str, list[str]] = {}
+    for row in rows:
+        groups.setdefault(row["area"].split(" · ")[0], []).append(row["result"])
+    return groups
+
+
+def _area(name: str, results: list[str]) -> str:
+    passed = results.count("Pass")
+    kind = "fail" if "Fail" in results else "pass"
+    return (
+        f'<div class="area {kind}"><span>{escape(name)}</span>'
+        f"<strong>{passed} of {len(results)}</strong><small>passed</small></div>"
+    )
+
+
+def _markdown(rows, status, groups, passed, failed, skipped, duration) -> str:
+    lines = [
+        f"## Invoice Tracker QA: {status}",
+        "",
+        f"**{len(rows)} checks:** {passed} passed, {failed} failed, {skipped} skipped, in {duration}.",
+        "",
+        "| Area | Passed | Failed | Skipped |",
+        "|------|-------:|-------:|--------:|",
+    ]
+    for name, results in groups.items():
+        lines.append(f"| {name} | {results.count('Pass')} | {results.count('Fail')} | {results.count('Skipped')} |")
+    failures = [row for row in rows if row["result"] == "Fail"]
+    if failures:
+        lines += ["", "### Failed checks", "", "| Check | Area | Why |", "|-------|------|-----|"]
+        for row in failures:
+            lines.append(f"| {_cell(row['check'])} | {_cell(row['area'])} | {_cell(row['detail'])} |")
+    lines += ["", f"<details><summary>All {len(rows)} checks</summary>", "",
+              "| Check | Area | Result |", "|-------|------|--------|"]
+    for row in rows:
+        lines.append(f"| {_cell(row['check'])} | {_cell(row['area'])} | {row['result']} |")
+    lines += ["", "</details>", "", "The styled report is attached to this run as **test-report**.", ""]
+    return "\n".join(lines)
+
+
+def _cell(text: str) -> str:
+    return text.replace("|", "\\|").replace("\n", " ")
 
 
 def _row(row: dict) -> str:
@@ -68,7 +158,7 @@ def _row(row: dict) -> str:
     return (
         f'<tr class="{kind}" data-result="{kind}">'
         f'<td>{escape(row["check"])}{detail}</td>'
-        f'<td class="page">{escape(row["page"])}</td>'
+        f'<td class="page">{escape(row["area"])}</td>'
         f'<td class="fit"><span class="tag {kind}">{escape(row["result"])}</span></td>'
         f'<td class="fit time">{escape(row["time"])}</td>'
         f"</tr>"
@@ -135,6 +225,13 @@ PAGE = """<!DOCTYPE html>
     .tag.fail {{ color: var(--fail); }}
     .tag.skipped {{ color: var(--muted); }}
     .detail {{ margin-top: 4px; color: var(--fail); font-size: 12px; }}
+    .areas {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-top: 12px; }}
+    .area {{ background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--pass); border-radius: 14px; padding: 12px 16px; }}
+    .area.fail {{ border-left-color: var(--fail); }}
+    .area span {{ display: block; color: var(--muted); font-size: 12px; }}
+    .area strong {{ font-size: 18px; margin-right: 6px; }}
+    .area small {{ color: var(--muted); }}
+    .intro {{ margin: 22px 0 0; color: var(--muted); font-size: 13px; }}
     .empty {{ display: none; padding: 28px 16px; color: var(--muted); }}
     @media (max-width: 720px) {{
       .stats {{ grid-template-columns: 1fr 1fr; }}
@@ -151,7 +248,7 @@ PAGE = """<!DOCTYPE html>
       </div>
       <div>
         <h1>Invoice Tracker QA</h1>
-        <p class="sub">{when} · practice data only</p>
+        <p class="sub">{when}</p>
       </div>
     </div>
     <div class="pill {pill}"><span class="dot"></span>{status}</div>
@@ -163,10 +260,14 @@ PAGE = """<!DOCTYPE html>
       <div class="stat"><span>Skipped</span><strong>{skipped}</strong></div>
       <div class="stat"><span>Time</span><strong>{duration}</strong></div>
     </section>
+    <p class="intro">What was tested: {count} checks in these areas.</p>
+    <section class="areas">
+      {areas}
+    </section>
     <section class="panel">
       <div class="toolbar">
         <h2>Checks</h2>
-        <input id="search" type="search" placeholder="Search check or page" />
+        <input id="search" type="search" placeholder="Search check or area" />
         <div class="filters">
           <button type="button" data-filter="fail">Failed</button>
           <button type="button" data-filter="pass">Passed</button>
@@ -177,7 +278,7 @@ PAGE = """<!DOCTYPE html>
         <thead>
           <tr>
             <th>Check</th>
-            <th>Page</th>
+            <th>Area</th>
             <th>Result</th>
             <th class="time">Duration</th>
           </tr>
