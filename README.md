@@ -63,7 +63,7 @@ Fifteen critical checks live in `tests/test_browser.py`. They use Playwright thr
 .\.venv\Scripts\python -m pytest tests/test_browser.py --browser chromium
 ```
 
-The report is written to `playwright-report/index.html`. Open that file in a browser. It is not committed.
+Every test run writes a report to `test-report/index.html`, covering whichever tests ran. Open that file in a browser. It is not committed. On GitHub, the same summary appears on the run page and the report is attached to the run as **test-report**.
 
 PowerShell does not recognize a bare `playwright` command. Use the `python -m playwright` line above. That downloads Chromium into `%LOCALAPPDATA%\ms-playwright`.
 

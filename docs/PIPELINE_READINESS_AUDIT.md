@@ -10,8 +10,8 @@ The pipeline (`.github/workflows/invoice-checks.yml`) runs `python -m pytest tes
 copy of the branch with a fresh virtual environment and no `.env`, that command passed (14 tests, exit 0), and a
 deliberately failing test made it exit 1, so a red build will really show red.
 
-The pipeline itself has **not** been seen running on GitHub yet (no Actions URL available, `gh` not installed,
-private repository). That row is `NOT RUN` until the developer opens the pull request.
+At audit time the pipeline had not run on GitHub. After the fixes it ran on the pull request on 15 Oct 2026 and
+passed (section 6).
 
 Main risks:
 
@@ -226,8 +226,7 @@ found by reading the code and has not been triggered.
 
 ## 5. Blockers
 
-- **GitHub Actions run:** not visible from this machine. Ask the developer for the Actions run link on the pull request
-  from `qa/invoice-checks` to `main`.
+- **GitHub Actions run:** resolved; the pipeline ran on the pull request and passed (section 6).
 - **Test database:** none exists. Creating `mini_tender_test` needs a decision from the database owner. The
   `mtb_app_dev` user currently has rights on the practice database only.
 
@@ -260,7 +259,7 @@ No application code was changed.
 | Browser checks, no app | same with `--base-url http://127.0.0.1:8765` | PASS | 15 skipped with a clear reason (was 15 failed) |
 | Database checks, no credentials | `MONGODB_URI` set to a placeholder, `python -m pytest -m db -rs` | PASS | 2 skipped with the missing-setting message (was 2 errors) |
 | Practice data unchanged | read-only `GET /api/invoices` | PASS | 18 invoices; INV-1001 paid 100; INV-1017 present; 0 "PW Check" invoices |
-| Pipeline on GitHub Actions | push to `qa/invoice-checks`, open the pull request | NOT RUN | Needs the Actions run link |
+| Pipeline on GitHub Actions | pull request from `qa/invoice-checks` to `main` (commit `fd99568`) | PASS | 15 Oct 2026 06:32 UTC, Python 3.12.15 on ubuntu-latest: 48 passed, 17 deselected, 0 failures, 0 errors; `junit.xml` artifact downloaded |
 
 ## 7. Incident during verification
 
