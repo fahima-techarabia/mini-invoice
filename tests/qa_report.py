@@ -70,6 +70,8 @@ def _plain(name: str) -> str:
 
 
 def clock(seconds: float) -> str:
+    if seconds < 0.001:
+        return "< 1 ms"
     if seconds < 1:
         return f"{round(seconds * 1000)} ms"
     return f"{seconds:.1f}s"
