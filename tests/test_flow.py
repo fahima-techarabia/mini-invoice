@@ -2,17 +2,15 @@
 
 Creates one invoice and deletes only that invoice. Does not reseed.
 """
-import warnings
-
 import pytest
 from fastapi.testclient import TestClient
 from pymongo.errors import DuplicateKeyError
 
-warnings.filterwarnings("ignore")
-
 from app.db import get_db
 from app.main import app
 from app.services import totals_match
+
+pytestmark = pytest.mark.db
 
 CUSTOMER = "Audit Supplies LLC"
 MARKER = "ui-audit-temp"
@@ -20,7 +18,10 @@ MARKER = "ui-audit-temp"
 
 @pytest.fixture()
 def client():
-    db = get_db()
+    try:
+        db = get_db()
+    except RuntimeError as missing:
+        pytest.skip(str(missing))
     if not db.name.endswith(("_practice", "_test")):
         pytest.skip("Refusing to write outside a practice database.")
     http = TestClient(app)

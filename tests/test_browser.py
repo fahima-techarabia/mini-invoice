@@ -1,15 +1,41 @@
 """Fifteen critical browser checks for the practice Invoice Tracker.
 
 These tests only read saved invoices, or submit a form the server refuses.
-They do not create, edit, or delete an invoice.
+They do not create, edit, or delete a practice invoice. If the server ever
+saves a refused form, the test fails and removes that one check invoice.
 """
 
 import re
 from decimal import Decimal
+from urllib.error import HTTPError, URLError
+from urllib.request import urlopen
 
+import pytest
 from playwright.sync_api import Page, expect
 
+pytestmark = pytest.mark.browser
+
 STATUSES = {"Paid", "Overdue", "Partially Paid", "Unpaid"}
+CHECK_CUSTOMER = "PW Check Supplies LLC"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def app_is_running(base_url):
+    try:
+        urlopen(f"{base_url}/invoices", timeout=5)
+    except HTTPError:
+        pass
+    except URLError:
+        pytest.skip(f"Invoice Tracker is not running at {base_url}. Start uvicorn first.")
+
+
+@pytest.fixture()
+def remove_saved_check_invoice(page: Page):
+    yield
+    found = page.request.get("/api/invoices", params={"q": CHECK_CUSTOMER}).json()["invoices"]
+    for invoice in found:
+        if invoice["customerName"] == CHECK_CUSTOMER:
+            page.request.delete(f"/api/invoices/{invoice['invoiceNumber']}")
 
 
 def money(text: str) -> Decimal:
@@ -22,9 +48,24 @@ def rows(page: Page):
     return page.get_by_test_id("invoice-row")
 
 
+def shown_rows(page: Page) -> list[dict]:
+    return rows(page).evaluate_all("""rows => rows.map(row => ({
+        number: row.dataset.number,
+        city: row.querySelector('[data-label=City]').innerText.trim(),
+        status: row.querySelector('[data-testid=invoice-status]').innerText.trim(),
+    }))""")
+
+
+def expect_exactly(page: Page, numbers: list[str]) -> None:
+    if not numbers:
+        expect(page.get_by_test_id("empty")).to_be_visible()
+    expect(rows(page)).to_have_count(len(numbers))
+    assert sorted(row["number"] for row in shown_rows(page)) == sorted(numbers)
+
+
 def fill_refused_invoice(page: Page, due: str, paid: str) -> None:
     page.goto("/invoices/new")
-    page.get_by_test_id("customer-name").fill("PW Check Supplies LLC")
+    page.get_by_test_id("customer-name").fill(CHECK_CUSTOMER)
     page.get_by_test_id("customer-email").fill("pw-check@practice.example")
     page.get_by_test_id("issue-date").fill("2026-10-14")
     page.get_by_test_id("due-date").fill(due)
@@ -53,12 +94,11 @@ def test_02_every_row_has_a_known_status(page: Page):
 
 def test_03_unpaid_filter_shows_only_unpaid(page: Page):
     page.goto("/invoices")
+    unpaid = [row["number"] for row in shown_rows(page) if row["status"] == "Unpaid"]
     page.get_by_test_id("filter-status").select_option("Unpaid")
     page.get_by_test_id("search-button").click()
     expect(page).to_have_url(re.compile(r"status=Unpaid"))
-    shown = rows(page).get_by_test_id("invoice-status").all_inner_texts()
-    assert shown
-    assert set(shown) == {"Unpaid"}
+    expect_exactly(page, unpaid)
 
 
 def test_04_search_finds_one_invoice_by_number(page: Page):
@@ -83,7 +123,8 @@ def test_05_dubai_filter_shows_only_dubai(page: Page):
 def test_06_clear_removes_the_filters(page: Page):
     page.goto("/invoices")
     total = int(page.get_by_test_id("book-total").inner_text())
-    page.get_by_test_id("search").fill("INV-1001")
+    number = rows(page).first.get_attribute("data-number")
+    page.get_by_test_id("search").fill(number)
     page.get_by_test_id("search-button").click()
     expect(rows(page)).to_have_count(1)
     page.get_by_test_id("clear-search").click()
@@ -121,6 +162,7 @@ def test_09_new_invoice_form_marks_required_fields(page: Page):
     expect(page.get_by_text("Amount paid is the total received so far")).to_be_visible()
 
 
+@pytest.mark.usefixtures("remove_saved_check_invoice")
 def test_10_due_date_before_issue_date_is_refused(page: Page):
     fill_refused_invoice(page, due="2026-10-01", paid="0")
     expect(page.get_by_test_id("error")).to_contain_text("Due date must be on or after the issue date.")
@@ -129,6 +171,7 @@ def test_10_due_date_before_issue_date_is_refused(page: Page):
     expect(page.get_by_test_id("empty")).to_be_visible()
 
 
+@pytest.mark.usefixtures("remove_saved_check_invoice")
 def test_11_amount_paid_above_the_total_is_refused(page: Page):
     page.goto("/invoices/new")
     page.get_by_test_id("quantity").fill("1")
@@ -168,6 +211,8 @@ def test_14_dismissing_delete_keeps_the_invoice(page: Page):
         message["text"] = dialog.message
         dialog.dismiss()
 
+    # A real delete must never reach the server, even if the confirm dialog stops working.
+    page.route("**/invoices/*/delete", lambda route: route.abort())
     page.once("dialog", handle_dialog)
     row.get_by_test_id("delete").click()
     assert number in message["text"]
@@ -177,6 +222,7 @@ def test_14_dismissing_delete_keeps_the_invoice(page: Page):
 
 def test_15_city_and_status_filters_apply_together(page: Page):
     page.goto("/invoices")
+    wanted = [row["number"] for row in shown_rows(page) if row["city"] == "Dubai" and row["status"] == "Overdue"]
     page.get_by_test_id("filter-city").select_option("Dubai")
     page.get_by_test_id("filter-status").select_option("Overdue")
     page.get_by_test_id("search-button").click()
@@ -184,7 +230,4 @@ def test_15_city_and_status_filters_apply_together(page: Page):
     expect(page).to_have_url(re.compile(r"status=Overdue"))
     expect(page.get_by_test_id("filter-city")).to_have_value("Dubai")
     expect(page.get_by_test_id("filter-status")).to_have_value("Overdue")
-    shown = rows(page)
-    assert shown.count() >= 1
-    assert set(shown.locator("[data-label=City]").all_inner_texts()) == {"Dubai"}
-    assert set(shown.get_by_test_id("invoice-status").all_inner_texts()) == {"Overdue"}
+    expect_exactly(page, wanted)

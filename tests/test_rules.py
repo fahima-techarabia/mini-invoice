@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.services import AppError, invoice_status, validate
+from app.services import DEFAULT_OFFSET_MINUTES, AppError, invoice_status, parse_offset, validate
 
 TODAY = "2026-10-14"
 
@@ -52,6 +52,24 @@ def test_amount_paid_replaces_rather_than_adds():
     assert second["amountPaid"] == 10.0
 
 
+def test_largest_quantity_and_price_are_allowed():
+    saved = validate(_invoice(amountPaid="0", lineItems=[
+        {"description": "Bulk", "quantity": "9999", "unitPrice": "1000000"},
+    ]))
+    assert saved["total"] == 9_999_000_000.0
+
+
+@pytest.mark.parametrize("cookie, offset", [
+    ("-240", -240),
+    ("840", 840),
+    ("841", DEFAULT_OFFSET_MINUTES),
+    ("abc", DEFAULT_OFFSET_MINUTES),
+    (None, DEFAULT_OFFSET_MINUTES),
+])
+def test_timezone_cookie_falls_back_to_dubai(cookie, offset):
+    assert parse_offset(cookie) == offset
+
+
 def test_paid_equal_to_the_total_is_allowed():
     saved = validate(_invoice(amountPaid="90"))
     assert saved["amountPaid"] == 90.0
@@ -69,6 +87,13 @@ def test_paid_equal_to_the_total_is_allowed():
     ({"lineItems": [{"description": "Labels", "quantity": "1", "unitPrice": "-5"}]}, "greater than 0"),
     ({"notes": "x" * 501}, "at most 500"),
     ({"lineItems": []}, "1 to 10 lines"),
+    ({"lineItems": [{"description": "Labels", "quantity": "1", "unitPrice": "1"}] * 11}, "1 to 10 lines"),
+    ({"lineItems": [{"description": "Labels", "quantity": "10000", "unitPrice": "1"}]}, "quantity must be from 1 to 9999"),
+    ({"lineItems": [{"description": "Labels", "quantity": "1.5", "unitPrice": "1"}]}, "quantity must be a whole number"),
+    ({"lineItems": [{"description": "Labels", "quantity": "1", "unitPrice": "1000000.01"}]}, "at most 1,000,000"),
+    ({"lineItems": [{"description": "Labels", "quantity": "1", "unitPrice": "10.005"}]}, "at most 2 decimal places"),
+    ({"dueDate": "2026-02-30"}, "Due date must be a real date"),
+    ({"currency": "USD"}, "Currency must be AED"),
 ])
 def test_server_rejects_invalid_invoices(changes, message):
     with pytest.raises(AppError) as caught:
